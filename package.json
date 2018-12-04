@@ -1,0 +1,20 @@
+{
+  "name": "dothot",
+  "version": "0.0.0",
+  "description": "Runtime dependency tracking and remote-controlled module reloading for Node.js",
+  "bin": {
+    "node.hot": "./node.hot"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "devDependencies": {
+    "tape": "^4.9.1"
+  },
+  "dependencies": {
+    "builtin-modules": "^3.0.0",
+    "chokidar": "^2.0.4",
+    "clear-module": "^3.0.0"
+  }
+}
