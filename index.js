@@ -59,10 +59,10 @@ class DotHot {
   output (filename) {
     const stream = require('fs').createWriteStream(filename)
     this.emitter.on('required', (child, parent) => {
-      stream.write(JSON.stringify(['required', child, parent]))
+      stream.write(JSON.stringify(['required', child, parent])+'\n')
     })
     this.emitter.on('flushed', (filename) => {
-      stream.write(JSON.stringify(['flushed', filename]))
+      stream.write(JSON.stringify(['flushed', filename])+'\n')
     })
   }
 
