@@ -1,20 +1,17 @@
 {
   "name": "dothot",
-  "version": "0.0.0",
-  "description": "Runtime dependency tracking and remote-controlled module reloading for Node.js",
-  "bin": {
-    "node.hot": "./node.hot"
-  },
-  "main": "src/index.js",
+  "version": "0.1.0",
+  "description": "flushes require cache when source changes, logs require() calls",
+  "main": "index.js",
   "scripts": {
-    "test": "node test.js"
-  },
-  "devDependencies": {
-    "tape": "^4.9.1"
+    "test": "NODE_HOT_OUT=/proc/self/fd/1 node -r ./index.js test.js"
   },
   "dependencies": {
     "builtin-modules": "^3.0.0",
     "chokidar": "^2.0.4",
     "clear-module": "^3.0.0"
+  },
+  "devDependencies": {
+    "tape": "^4.9.1"
   }
 }

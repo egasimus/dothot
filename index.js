@@ -1,66 +1,39 @@
 module.exports = DotHot
 
-function DotHot (events, watch, output, input) {
+function DotHot () {
 
-  events = events || require('process')
-  var watcher
+  // process is an event emitter, let's hook onto it
+  var events = require('process')
+
+  // parent-to-child and child-to-parent mappings
   var parents = {}
   var children = {}
-  var entrypoints = []
+
+  // create an empty filesystem watcher
+  // modules will be added manually upon require
+  // TODO: manual mode: watcher disabled; read flush commands from line stream
+  var watcher = require('chokidar').watch()
+  watcher = require('chokidar').watch()
+  watcher.on('change', flush)
+  watcher.on('unlink', flush)
+
+  // patch hook into CJS loader method
+  // TODO: support ESM modules if possible and necessary
   var Module = require('module')
   var builtins = Module.builtinModules || require('builtin-modules')
   var loadModule = Module._load
-
-  // patch hook into CJS loader method
   Module._load = function _load (request, parent, isMain) {
     add(request, parent)
     return loadModule(request, parent, isMain)
   }
 
-  // create an empty filesystem watcher
-  // modules will be added manually upon require
-  // env var NODE_HOT_OFF turns this off
-  if (watch) {
-    watcher = require('chokidar').watch()
-    watcher.on('change', flush)
-    watcher.on('unlink', flush)
-  }
-
-  // env var NODE_HOT_OUT specifies an output path to log to
-  if (output) {
-    var outputStream = require('fs').createWriteStream(output)
-    events.on('require-cache-miss', function (child, parent) {
-      outputStream.write(JSON.stringify(['miss', child, parent])+'\n')
-    })
-    events.on('require-cache-hit', function (child, parent) {
-      outputStream.write(JSON.stringify(['hit', child, parent])+'\n')
-    })
-    events.on('require-cache-flush', function (filename) {
-      outputStream.write(JSON.stringify(['flush', filename])+'\n')
-    })
-  }
-
-  // env var NODE_HOT_IN specifies an input path to read commands from
-  if (input) {
-    var inputStream = require('fs').createReadStream(input)
-    var nullStream = require('fs').createWriteStream('/dev/null')
-    let readline
-    const createReadline = () => {
-      readline = require('readline').createInterface({
-        input: inputStream,
-        output: nullStream
-      })
-      readline.on('line', flush)
-      readline.on('close', createReadline)
-    }
-    createReadline()
-  }
-
   return {
-    parents: parents,
-    children: children,
     events: events,
     watcher: watcher,
+    parents: parents,
+    children: children,
+    add: add,
+    flush: flush
   }
 
   function add (child, parent) {
@@ -93,23 +66,42 @@ function DotHot (events, watch, output, input) {
     } else {
       events.emit('require-cache-hit', child, parent)
     }
-    if (watcher) watcher.add(child)
+    watcher.add(child)
   }
 
   function flush (filename) {
     require('clear-module')(filename)
     events.emit('require-cache-flush', filename)
-    if (watcher) watcher.unwatch(filename)
+    watcher.unwatch(filename)
   }
 
 }
 
-// a node process can be instrumented with this using `node -r dothot`
+// to instrument a Node process:
+// * set env var NODE_HOT_OUT
+// * add `-r dothot` to `node` command line
 if (module.parent && module.parent.id === 'internal/preload') {
-  process.hot = DotHot(
-    process,
-    !process.env.NODE_HOT_OFF,
-    process.env.NODE_HOT_OUT,
-    process.env.NODE_HOT_IN,
-  )
+
+  process.hot = DotHot()
+
+  // env var NODE_HOT_OUT specifies an output path to log to
+  // TODO: log cache hits
+  // TODO: log (hi-res?) timestamps for all events
+  if (process.env.NODE_HOT_OUT) {
+
+    var output =
+      (process.env.NODE_HOT_OUT === 'stdout') ? process.stdout :
+      (process.env.NODE_HOT_OUT === 'stderr') ? process.stderr :
+      require('fs').createWriteStream(process.env.NODE_HOT_OUT)
+
+    process.hot.events.on('require-cache-miss', function (child, parent) {
+      output.write(JSON.stringify(['require-cache-miss', child, parent])+'\n')
+    })
+
+    process.hot.events.on('require-cache-flush', function (filename) {
+      output.write(JSON.stringify(['require-cache-flush', filename])+'\n')
+    })
+
+  }
+
 }
