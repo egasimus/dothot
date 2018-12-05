@@ -1,83 +1,115 @@
-const Module   = require('module')
-    , builtins = Module.builtinModules || require('builtin-modules')
-    , clear    = require('clear-module')
+module.exports = DotHot
 
-class DotHot {
+function DotHot (events, watch, output, input) {
 
-  constructor () {
-    this.emitter  = process
-    this.watcher  = null
-    this.parents  = {}
-    this.children = {}
-    this.oldModuleLoad = Module._load
+  events = events || require('process')
+  var watcher
+  var parents = {}
+  var children = {}
+  var entrypoints = []
+  var Module = require('module')
+  var builtins = Module.builtinModules || require('builtin-modules')
+  var loadModule = Module._load
+
+  // patch hook into CJS loader method
+  Module._load = function _load (request, parent, isMain) {
+    add(request, parent)
+    return loadModule(request, parent, isMain)
   }
 
-  install () {
-    const _this = this
-    Module._load = function (request, parent, isMain) {
-      _this.add(request, parent)
-      return _this.oldModuleLoad(request, parent, isMain)
-    }
+  // create an empty filesystem watcher
+  // modules will be added manually upon require
+  // env var NODE_HOT_OFF turns this off
+  if (watch) {
+    watcher = require('chokidar').watch()
+    watcher.on('change', flush)
+    watcher.on('unlink', flush)
   }
 
-  watch () {
-    if (this.watcher) return
-    this.watcher = require('chokidar').watch()
-    this.watcher.on('change', path => this.flush(path))
-    this.watcher.on('unlink', path => this.flush(path))
-  }
-
-  add (child, parent) {
-    if (builtins.indexOf(child) < 0) {
-      child = Module._resolveFilename(child, parent)
-    }
-
-    parent = parent.filename
-
-    if (!this.parents[child]) {
-      this.parents[child] = [parent]
-    } else if (this.parents[child].indexOf(parent) < 0) {
-      this.parents[child].push(parent)
-    }
-
-    if (!this.children[parent]) {
-      this.children[parent] = [child]
-    } else if (this.children[parent].indexOf(child) < 0) {
-      this.children[parent].push(child)
-    }
-
-    this.emitter.emit('required', child, parent)
-    if (this.watcher) this.watcher.add(child)
-  }
-
-  flush (filename) {
-    require('clear-module')(filename)
-    this.emitter.emit('flushed', filename)
-    if (this.watcher) this.watcher.unwatch(filename)
-  }
-
-  output (filename) {
-    const stream = require('fs').createWriteStream(filename)
-    this.emitter.on('required', (child, parent) => {
-      stream.write(JSON.stringify(['required', child, parent])+'\n')
+  // env var NODE_HOT_OUT specifies an output path to log to
+  if (output) {
+    var outputStream = require('fs').createWriteStream(output)
+    events.on('require-cache-miss', function (child, parent) {
+      outputStream.write(JSON.stringify(['miss', child, parent])+'\n')
     })
-    this.emitter.on('flushed', (filename) => {
-      stream.write(JSON.stringify(['flushed', filename])+'\n')
+    events.on('require-cache-hit', function (child, parent) {
+      outputStream.write(JSON.stringify(['hit', child, parent])+'\n')
+    })
+    events.on('require-cache-flush', function (filename) {
+      outputStream.write(JSON.stringify(['flush', filename])+'\n')
     })
   }
 
-  input (filename) {
-    const input = require('fs').createReadStream(filename)
-    const output = require('fs').createWriteStream('/dev/null')
+  // env var NODE_HOT_IN specifies an input path to read commands from
+  if (input) {
+    var inputStream = require('fs').createReadStream(input)
+    var nullStream = require('fs').createWriteStream('/dev/null')
     let readline
     const createReadline = () => {
-      readline = require('readline').createInterface({ input, output })
-      readline.on('line', line => this.flush(line))
+      readline = require('readline').createInterface({
+        input: inputStream,
+        output: nullStream
+      })
+      readline.on('line', flush)
       readline.on('close', createReadline)
     }
     createReadline()
   }
 
+  return {
+    parents: parents,
+    children: children,
+    events: events,
+    watcher: watcher,
+  }
+
+  function add (child, parent) {
+    // get full file names
+    if (builtins.indexOf(child) < 0) {
+      child = Module._resolveFilename(child, parent)
+    }
+
+    // parent can be null for entrypoints
+    if (parent) parent = parent.filename
+
+    // add bidirectional links to dependency graphs
+    if (!parents[child]) {
+      parents[child] = [parent]
+    } else if (parents[child].indexOf(parent) < 0) {
+      parents[child].push(parent)
+    }
+    if (!children[parent]) {
+      children[parent] = [child]
+    } else if (children[parent].indexOf(child) < 0) {
+      children[parent].push(child)
+    }
+
+    // emit and add to watcher
+    if (
+      builtins.indexOf(child) < 0 &&
+      Object.keys(require.cache).indexOf(child) < 0
+    ) {
+      events.emit('require-cache-miss', child, parent)
+    } else {
+      events.emit('require-cache-hit', child, parent)
+    }
+    if (watcher) watcher.add(child)
+  }
+
+  function flush (filename) {
+    require('clear-module')(filename)
+    events.emit('require-cache-flush', filename)
+    if (watcher) watcher.unwatch(filename)
+  }
+
 }
 
-module.exports = DotHot
+// a node process can be instrumented with this using `node -r dothot`
+if (module.parent && module.parent.id === 'internal/preload') {
+  process.hot = DotHot(
+    process,
+    !process.env.NODE_HOT_OFF,
+    process.env.NODE_HOT_OUT,
+    process.env.NODE_HOT_IN,
+  )
+}
