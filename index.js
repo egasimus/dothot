@@ -59,13 +59,15 @@ function DotHot (events) {
 
     // emit cache hit/miss
     // always emits hit for builtins since they're not added to require.cache
-    if (
-      builtins.indexOf(child) < 0 &&
-      Object.keys(require.cache).indexOf(child) < 0
-    ) {
-      events.emit('require-cache-miss', child, parent)
-    } else {
-      events.emit('require-cache-hit', child, parent)
+    if (events) {
+      if (
+        builtins.indexOf(child) < 0 &&
+        Object.keys(require.cache).indexOf(child) < 0
+      ) {
+        events.emit('require-cache-miss', child, parent)
+      } else {
+        events.emit('require-cache-hit', child, parent)
+      }
     }
 
     // add to watcher
@@ -78,7 +80,9 @@ function DotHot (events) {
 
   function flush (filename) {
     require('clear-module')(filename)
-    events.emit('require-cache-flush', filename)
+    if (events) {
+      events.emit('require-cache-flush', filename)
+    }
     watcher.unwatch(filename)
   }
 

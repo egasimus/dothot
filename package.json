@@ -1,6 +1,6 @@
 {
   "name": "dothot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "flushes require cache when source changes, logs require() calls",
   "main": "index.js",
   "scripts": {
