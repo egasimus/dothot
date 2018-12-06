@@ -3,22 +3,16 @@ module.exports = DotHot
 function DotHot () {
 
   // process is an event emitter, let's hook onto it
-  var events = require('process')
+  // TODO allow user to pass a custom event emitter
+  var events = process
 
-  // parent-to-child and child-to-parent mappings
+  // dependency graph
   var parents = {}
   var children = {}
 
-  // create an empty filesystem watcher
-  // modules will be added manually upon require
-  // TODO: manual mode: watcher disabled; read flush commands from line stream
-  var watcher = require('chokidar').watch()
-  watcher = require('chokidar').watch()
-  watcher.on('change', flush)
-  watcher.on('unlink', flush)
-
   // patch hook into CJS loader method
   // TODO: support ESM modules if possible and necessary
+  var requiredBeforeWatcher = []
   var Module = require('module')
   var builtins = Module.builtinModules || require('builtin-modules')
   var loadModule = Module._load
@@ -26,6 +20,16 @@ function DotHot () {
     add(request, parent)
     return loadModule(request, parent, isMain)
   }
+
+  // create an empty filesystem watcher
+  // modules will be added manually upon require
+  // TODO: manual mode: watcher disabled; read flush commands from line stream
+  var watcher = require('chokidar').watch()
+  watcher.on('change', flush)
+  watcher.on('unlink', flush)
+  requiredBeforeWatcher.forEach(function (filename) {
+    watcher.add(filename)
+  })
 
   return {
     events: events,
@@ -57,7 +61,8 @@ function DotHot () {
       children[parent].push(child)
     }
 
-    // emit and add to watcher
+    // emit cache hit/miss
+    // always emits hit for builtins since they're not added to require.cache
     if (
       builtins.indexOf(child) < 0 &&
       Object.keys(require.cache).indexOf(child) < 0
@@ -66,7 +71,13 @@ function DotHot () {
     } else {
       events.emit('require-cache-hit', child, parent)
     }
-    watcher.add(child)
+
+    // add to watcher
+    if (watcher) {
+      watcher.add(child)
+    } else {
+      requiredBeforeWatcher.push(child)
+    }
   }
 
   function flush (filename) {
