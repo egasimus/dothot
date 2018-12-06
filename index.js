@@ -1,10 +1,6 @@
 module.exports = DotHot
 
-function DotHot () {
-
-  // process is an event emitter, let's hook onto it
-  // TODO allow user to pass a custom event emitter
-  var events = process
+function DotHot (events) {
 
   // dependency graph
   var parents = {}
@@ -113,6 +109,7 @@ if (module.parent && module.parent.id === 'internal/preload') {
 
   }
 
-  process.hot = DotHot()
+  // process is an event emitter, let's hook onto it
+  process.hot = DotHot(process)
 
 }
