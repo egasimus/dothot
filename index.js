@@ -93,8 +93,6 @@ function DotHot () {
 // * add `-r dothot` to `node` command line
 if (module.parent && module.parent.id === 'internal/preload') {
 
-  process.hot = DotHot()
-
   // env var NODE_HOT_OUT specifies an output path to log to
   // TODO: log cache hits
   // TODO: log (hi-res?) timestamps for all events
@@ -105,14 +103,16 @@ if (module.parent && module.parent.id === 'internal/preload') {
       (process.env.NODE_HOT_OUT === 'stderr') ? process.stderr :
       require('fs').createWriteStream(process.env.NODE_HOT_OUT)
 
-    process.hot.events.on('require-cache-miss', function (child, parent) {
+    process.on('require-cache-miss', function (child, parent) {
       output.write(JSON.stringify(['require-cache-miss', child, parent])+'\n')
     })
 
-    process.hot.events.on('require-cache-flush', function (filename) {
+    process.on('require-cache-flush', function (filename) {
       output.write(JSON.stringify(['require-cache-flush', filename])+'\n')
     })
 
   }
+
+  process.hot = DotHot()
 
 }
