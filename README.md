@@ -1,6 +1,28 @@
-# Node.HOT 🔥🌶️🌋
+# Node Dot Hot 🔥🌶️🌋
 
-Runtime dependency tracking and remote-controlled module reloading for Node.js
+Hot reloading for Node.js in the simplest possible way.
+
+## How it works
+DotHot watches `require`'d files for changes (using `chokidar`).
+When a module changes, it is deleted from `require.cache`.
+
+It is up to you to re-require the module. In practice,
+this means you need to do:
+
+```js
+myFunction () {
+  require('module').doSomething()
+}
+```
+
+instead of:
+
+```js
+const {doSomething} = require('module')
+myFunction () {
+  doSomething()
+}
+```
 
 ## Usage
 
