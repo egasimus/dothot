@@ -1,9 +1,38 @@
 module.exports = DotHot
 
-function DotHot (events) {
+var E_HIT   = 'DotHot.Hit'
+var E_MISS  = 'DotHot.Miss'
+var E_FLUSH = 'DotHot.Flush'
+
+// to instrument a Node process, either
+// * add `-r dothot` to `node` command line
+// * require('dothot')(process) at entry
+
+if (
+  module.parent && // how do these conditions work?
+  module.parent.id === 'internal/preload'
+) {
+
+  setupOutput(process.env.NODE_HOT_OUT, process)
+
+  // process is an event emitter, let's hook onto it
+  process.hot = DotHot(process)
+
+}
+
+function DotHot (emitter) {
+
+  // prevent duplicate binding
+  if (emitter) {
+    if (emitter._DotHot_) {
+      return
+    } else {
+      emitter._DotHot_ = true;
+    }
+  }
 
   // dependency graph
-  var parents = {}
+  var parents  = {}
   var children = {}
 
   // patch hook into CJS loader method
@@ -28,7 +57,7 @@ function DotHot (events) {
   })
 
   return {
-    events: events,
+    emitter: emitter,
     watcher: watcher,
     parents: parents,
     children: children,
@@ -59,14 +88,14 @@ function DotHot (events) {
 
     // emit cache hit/miss
     // always emits hit for builtins since they're not added to require.cache
-    if (events) {
+    if (emitter) {
       if (
         builtins.indexOf(child) < 0 &&
         Object.keys(require.cache).indexOf(child) < 0
       ) {
-        events.emit('require-cache-miss', child, parent)
+        emitter.emit(E_MISS, child, parent)
       } else {
-        events.emit('require-cache-hit', child, parent)
+        emitter.emit(E_HIT, child, parent)
       }
     }
 
@@ -80,40 +109,28 @@ function DotHot (events) {
 
   function flush (filename) {
     require('clear-module')(filename)
-    if (events) {
-      events.emit('require-cache-flush', filename)
+    if (emitter) {
+      emitter.emit('require-cache-flush', filename)
     }
     watcher.unwatch(filename)
   }
 
 }
 
-// to instrument a Node process:
-// * set env var NODE_HOT_OUT
-// * add `-r dothot` to `node` command line
-if (module.parent && module.parent.id === 'internal/preload') {
+function setupOutput (outputSpec, emitter) {
+  if (!outputSpec) return
 
-  // env var NODE_HOT_OUT specifies an output path to log to
-  // TODO: log cache hits
-  // TODO: log (hi-res?) timestamps for all events
-  if (process.env.NODE_HOT_OUT) {
+  var output =
+    (outputSpec === 'stdout') ? process.stdout :
+    (outputSpec === 'stderr') ? process.stderr :
+    require('fs').createWriteStream(outputSpec)
 
-    var output =
-      (process.env.NODE_HOT_OUT === 'stdout') ? process.stdout :
-      (process.env.NODE_HOT_OUT === 'stderr') ? process.stderr :
-      require('fs').createWriteStream(process.env.NODE_HOT_OUT)
+  process.on('require-cache-miss', function (child, parent) {
+    output.write(JSON.stringify([E_MISS, child, parent])+'\n')
+  })
 
-    process.on('require-cache-miss', function (child, parent) {
-      output.write(JSON.stringify(['require-cache-miss', child, parent])+'\n')
-    })
-
-    process.on('require-cache-flush', function (filename) {
-      output.write(JSON.stringify(['require-cache-flush', filename])+'\n')
-    })
-
-  }
-
-  // process is an event emitter, let's hook onto it
-  process.hot = DotHot(process)
+  process.on('require-cache-flush', function (filename) {
+    output.write(JSON.stringify([E_FLUSH, filename])+'\n')
+  })
 
 }
