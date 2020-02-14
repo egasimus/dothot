@@ -1,8 +1,10 @@
 module.exports = DotHot
 
-var E_HIT   = 'DotHot.Hit'
-var E_MISS  = 'DotHot.Miss'
-var E_FLUSH = 'DotHot.Flush'
+var EVENTS = module.exports.events = {
+  HIT:   'DotHot.Hit',
+  MISS:  'DotHot.Miss',
+  FLUSH: 'DotHot.Flush',
+}
 
 // to instrument a Node process, either
 // * add `-r dothot` to `node` command line
@@ -12,12 +14,8 @@ if (
   module.parent && // how do these conditions work?
   module.parent.id === 'internal/preload'
 ) {
-
   setupOutput(process.env.NODE_HOT_OUT, process)
-
-  // process is an event emitter, let's hook onto it
-  process.hot = DotHot(process)
-
+  DotHot(process)
 }
 
 function DotHot (emitter) {
@@ -57,12 +55,12 @@ function DotHot (emitter) {
   })
 
   return {
-    emitter: emitter,
-    watcher: watcher,
-    parents: parents,
+    emitter:  emitter,
+    watcher:  watcher,
+    parents:  parents,
     children: children,
-    add: add,
-    flush: flush
+    add:      add,
+    flush:    flush
   }
 
   function add (child, parent) {
@@ -93,9 +91,9 @@ function DotHot (emitter) {
         builtins.indexOf(child) < 0 &&
         Object.keys(require.cache).indexOf(child) < 0
       ) {
-        emitter.emit(E_MISS, child, parent)
+        emitter.emit(DotHot.events.MISS, child, parent)
       } else {
-        emitter.emit(E_HIT, child, parent)
+        emitter.emit(DotHot.events.HIT, child, parent)
       }
     }
 
@@ -125,12 +123,19 @@ function setupOutput (outputSpec, emitter) {
     (outputSpec === 'stderr') ? process.stderr :
     require('fs').createWriteStream(outputSpec)
 
+  function log (event, data) {
+    event = { event: event }
+    Object.keys(data).forEach(function (key) { event[key] = data[key] })
+    output.write(JSON.stringify(event))
+    output.write('\n')
+  }
+
   process.on('require-cache-miss', function (child, parent) {
-    output.write(JSON.stringify([E_MISS, child, parent])+'\n')
+    log(DotHot.events.MISS, { child: child, parent: parent })
   })
 
   process.on('require-cache-flush', function (filename) {
-    output.write(JSON.stringify([E_FLUSH, filename])+'\n')
+    log(DotHot.events.FLUSH, { filename: filename })
   })
 
 }
